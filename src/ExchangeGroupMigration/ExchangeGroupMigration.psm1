@@ -2503,7 +2503,7 @@ function Disable-OnpremDistributionGroups
 					$ou = $Global:ContactSyncExclusionOU
 					$domainControllerContact = Get-DomainController $ou
 					$contactName = $onlineGroup.Name + " (Contact)"
-					if ($contactName.Length -gt 64) { $contactName = $contactName.Substring(0, 64) }
+					if ($contactName.Length -gt 64) { $contactName = $contactName.Substring(0, 64).Trim() }
 
 					$ExternalEmailAddress = (($onlineGroup.EmailAddresses | Where { $_ -like "*$Global:HybridEmailRoutingDomain" } | Select -First 1) -Split ":")[1]
 					$OnlinePrimarySmtpAddress = $onlineGroup.PrimarySmtpAddress
@@ -2526,10 +2526,48 @@ function Disable-OnpremDistributionGroups
 							Write-Log $msg
 						}
 					}
+				}
+				else
+				{
+					$msg = "[ERROR] - Online DL '$($Group.Identity)' - '$($Group.PrimarySmtpAddress)' not found!!"
+					Write-Warning $msg
+					Write-Log $msg
+				}
+			}
+
+			Start-RobustCloudCommand -Agree -UserName $Global:__UPN__ -Recipients $onpremGroupsBatch -IdentifyingProperty "Name" -ScriptBlock $scriptBlock 
+		
+			$Global:batchIndex = 0
+			$scriptBlock = {
+				$Group = $input # InputObject from Start-RobustCloudCommand
+				$batchIndex = ++$Global:batchIndex
+
+				New-OnpremExchangeSession # in case oprem session is destroyed as well if EXO session needed to be rebuilt
+
+				Write-Log "($batchIndex / $batchCount / $loopIndex) Post Processing for on-prem DL: '$($Group.Identity)' - '$($Group.PrimarySmtpAddress)'"
+
+				$onlineGroup = Get-DistributionGroup -Identity $Group.PrimarySmtpAddress -ErrorAction Ignore
+
+				if ($onlineGroup)
+				{
+					$contactName = $onlineGroup.Name + " (Contact)"
+					if ($contactName.Length -gt 64) { $contactName = $contactName.Substring(0, 64).Trim() }
+
+					$ExternalEmailAddress = (($onlineGroup.EmailAddresses | Where { $_ -like "*$Global:HybridEmailRoutingDomain" } | Select -First 1) -Split ":")[1]
+					$OnlinePrimarySmtpAddress = $onlineGroup.PrimarySmtpAddress
+					if ($ExternalEmailAddress -eq $null)
+					{
+						$ExternalEmailAddress = $OnlinePrimarySmtpAddress
+						$msg = "[WARNING] - Using PrimarySmtpAddress instead of Hybrid Email Routing Address as targetAddress: '$($onlineGroup.Name)' - '$($ExternalEmailAddress)'"
+						Write-Warning $msg
+						Write-Log $msg
+					}
 
 					[array]$emailAddresses = $onlineGroup.EmailAddresses
 					$emailAddresses += "X500:" + $onlineGroup.LegacyExchangeDN
 
+					$ou = $Global:ContactSyncExclusionOU
+					$domainControllerContact = Get-DomainController $ou
 					$mailContact = Get-OnpremMailContact -Identity $contactName -DomainController $domainControllerContact -ErrorAction Ignore
 					if ($mailContact -eq $null)
 					{
@@ -2557,65 +2595,14 @@ function Disable-OnpremDistributionGroups
 						$mailContact = New-OnpremMailContact -Name $contactName -ExternalEmailAddress $ExternalEmailAddress -PrimarySmtpAddress $onlineGroup.PrimarySmtpAddress -DomainController $domainControllerContact `
 							-Alias $onlineGroup.Alias -DisplayName $onlineGroup.DisplayName -OrganizationalUnit $ou
 					}
-				}
-				else
-				{
-					$msg = "[ERROR] - Online DL '$($Group.Identity)' - '$($Group.PrimarySmtpAddress)' not found!!"
-					Write-Warning $msg
-					Write-Log $msg
-				}
-			}
 
-			Start-RobustCloudCommand -Agree -UserName $Global:__UPN__ -Recipients $onpremGroupsBatch -IdentifyingProperty "Name" -ScriptBlock $scriptBlock 
-		
-			$Global:batchIndex = 0
-			$scriptBlock = {
-				$Group = $input # InputObject from Start-RobustCloudCommand
-				$batchIndex = ++$Global:batchIndex
+					Write-Log "Updating MailContact for the online DL: '$($onlineGroup.Identity)' - '$($onlineGroup.PrimarySmtpAddress)'"
 
-				New-OnpremExchangeSession # in case oprem session is destroyed as well if EXO session needed to be rebuilt
-
-				Write-Log "($batchIndex / $batchCount / $loopIndex) Restroing proxyAddress on the contact for the on-prem DL: '$($Group.Identity)' - '$($Group.PrimarySmtpAddress)'"
-
-				$onlineGroup = Get-DistributionGroup -Identity $Group.PrimarySmtpAddress -ErrorAction Ignore
-
-				if ($onlineGroup)
-				{
-					$contactName = $onlineGroup.Name + " (Contact)"
-					if ($contactName.Length -gt 64) { $contactName = $contactName.Substring(0, 64) }
-
-					$ExternalEmailAddress = (($onlineGroup.EmailAddresses | Where { $_ -like "*$Global:HybridEmailRoutingDomain" } | Select -First 1) -Split ":")[1]
-					$OnlinePrimarySmtpAddress = $onlineGroup.PrimarySmtpAddress
-					if ($ExternalEmailAddress -eq $null)
-					{
-						$ExternalEmailAddress = $OnlinePrimarySmtpAddress
-						$msg = "[WARNING] - Using PrimarySmtpAddress instead of Hybrid Email Routing Address as targetAddress: '$($onlineGroup.Name)' - '$($ExternalEmailAddress)'"
-						Write-Warning $msg
-						Write-Log $msg
-					}
-
-					[array]$emailAddresses = $onlineGroup.EmailAddresses
-					$emailAddresses += "X500:" + $onlineGroup.LegacyExchangeDN
-
-					$ou = $Global:ContactSyncExclusionOU
-					$domainControllerContact = Get-DomainController $ou
-					$mailContact = Get-OnpremMailContact -Identity $contactName -DomainController $domainControllerContact -ErrorAction Ignore
-					if ($mailContact)
-					{
-						Write-Log "Updating MailContact for the online DL: '$($onlineGroup.Identity)' - '$($onlineGroup.PrimarySmtpAddress)'"
-
-						# TODO - Set ManagedBy AcceptMessagesOnlyFrom, etc
-						# TODO - Restore membership with contacts??
-						Set-OnpremMailContact -Identity $mailContact.Guid.Tostring() -DomainController $domainControllerContact `
-							-EmailAddresses $emailAddresses -EmailAddressPolicyEnabled:$false -ExternalEmailAddress $ExternalEmailAddress `
-							-CustomAttribute1 "DoNotSync"
-					}
-					else
-					{
-						$msg = "[ERROR] - Unable to locate contact for online DL '$($onlineGroup.Identity)' - '$($onlineGroup.PrimarySmtpAddress)'."
-						Write-Warning $msg
-						Write-Log $msg
-					}
+					# TODO - Set ManagedBy AcceptMessagesOnlyFrom, etc
+					# TODO - Restore membership with contacts??
+					Set-OnpremMailContact -Identity $mailContact.Guid.Tostring() -DomainController $domainControllerContact `
+						-EmailAddresses $emailAddresses -EmailAddressPolicyEnabled:$false -ExternalEmailAddress $ExternalEmailAddress `
+						-CustomAttribute1 "DoNotSync"
 				}
 				else
 				{
