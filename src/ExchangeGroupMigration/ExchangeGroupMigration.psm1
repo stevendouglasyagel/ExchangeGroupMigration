@@ -56,6 +56,8 @@ $Global:DomainControllerLookup = @{
 $Global:__LogFile__ = ".\Logs\ExchangeGroupMigration_" + [Guid]::NewGuid() + ".log"
 $Global:GroupsToMigrateTxtFileName = ".\GroupsToMigrate.txt" # Need only for pilot / test migration
 $Global:GroupsToDisableTxtFileName = ".\GroupsToDisable.txt" # Need only for pilot / test migration
+$Global:GroupsToDeleteTxtFileName = ".\GroupsToDelete.txt"
+$Global:GroupsGoodToDeleteTxtFileName = ".\GroupsGoodToDelete.txt"
 
 $Global:OnpremGroupExportFileName = ".\Exports\Onprem-DL-Data.json"
 $Global:OnpremGroupMemberExportFileName = ".\Exports\Onprem-DL-Member-Data.json"
@@ -75,6 +77,9 @@ $Global:OnpremGroupsGoodToMigrateFileName = ".\Exports\Onprem-Groups-Good-to-Mig
 $Global:OnpremGroupsGoodToMigrateWithOwnersFileName = ".\Exports\Onprem-Groups-Good-to-Migrate-Owner-Data.json"
 $Global:OnpremGroupsGoodToDisableFileName = ".\Exports\Onprem-Groups-Good-to-Disable-Data.json"
 $Global:OnpremGroupsFailingNestingValidationForDisablementFileName = ".\Exports\Onprem-Groups-Failing-Nesting-Validation-For-Disablement.json"
+$Global:OnpremAdGroupExportFileName = ".\Exports\Onprem-ADGroup-Data.json"
+$Global:OnpremGroupsGoodToDeleteFileName = ".\Exports\Onprem-Groups-Good-to-Delete-Data.json"
+$Global:OnpremGroupsFailingNestingValidationForDeletionFileName = ".\Exports\Onprem-Groups-Failing-Nesting-Validation-For-Deletion.json"
 
 $Global:OnlineGroupExportFileName = ".\Exports\Online-DL.json"
 $Global:OnlineGroupMemberExportFileName = ".\Exports\Online-DL-Member.json"
@@ -143,7 +148,24 @@ function Get-DomainController
 		$dn
 	)
 	
-	$Global:DomainControllerLookup.Keys | % { if ($dn -match $_) { $Global:DomainControllerLookup[$_] } }
+	$dc = $Global:DomainControllerLookup.Keys | % { if ($dn -match $_) { $Global:DomainControllerLookup[$_] } }
+
+	if ($dc.Count -gt 1)
+	{
+		# return root domain only if the child domain is not present
+		if (($dc[0] -split ".").Count -gt ($dc[1] -split ".").Count)
+		{
+			$dc[0]
+		}
+		else
+		{
+			$dc[1]
+		}
+	}
+	else
+	{
+		$dc
+	}
 }
 
 function Get-ShadowGroupName ([string] $GroupName, [string] $ShadowGroupSuffix = $Global:NewGroupNameSuffix)
@@ -385,7 +407,7 @@ function Get-OnpremRecipientDeliveryRestrictionsAndPublicDelegates
 
 		foreach ($filterAttribute in $filterAttributes)
 		{
-			$filter = "{ $filterAttribute -ne `$null }"
+			$filter = " $filterAttribute -ne '`$null' "
 
 			Write-Log "Reading Mailboxes with $filterAttribute configured..."
 			Get-OnpremMailbox -ResultSize Unlimited -IgnoreDefaultScope -Filter $filter `
@@ -779,7 +801,7 @@ function Get-OnlineRecipientDeliveryRestrictionsAndPublicDelegates
 		$scriptBlock = {
 			$filterAttribute = $Input.Name # InputObject from Start-RobustCloudCommand
 
-			$filter = "{ $filterAttribute -ne `$null }"
+			$filter = " $filterAttribute -ne '`$null' "
 
 			Write-Log "Reading Mailboxes with $filterAttribute configured..."
 			$output = Get-Mailbox -ResultSize Unlimited -Filter $filter `
@@ -2338,7 +2360,7 @@ function Switch-ShadowGroups
 .PARAMETER GroupsMembersJsonFilePath
 	The file path of the json file containing all group membership information previously saved. 
 .PARAMETER GroupsToDisableJsonFilePath
-	The file path of the json file containing to-be-disable groups information previously saved.
+	The file path of the json file containing to-be-disabled groups information previously saved.
 .EXAMPLE
 	Get-DistributionGroupsFailingNestingValidationForDisablement -GroupsMembersJsonFilePath $Global:OnpremGroupMemberExportFileName -GroupsToDisableJsonFilePath $Global:OnpremGroupsGoodToDisableFileName
 #>
@@ -2429,6 +2451,92 @@ function Get-DistributionGroupsFailingNestingValidationForDisablement
 	end
 	{
 		Write-Log "End executing $($MyInvocation.MyCommand). GroupsMembersJsonFilePath: $GroupsMembersJsonFilePath.  GroupsToDisableJsonFilePath: $GroupsToDisableJsonFilePath"
+	}
+}
+
+<#
+.Synopsis
+	Returns the groups that cannot be deleted because they are child groups of a group that is not on the list of groups to be disabled.
+.DESCRIPTION
+	Returns the groups that cannot be deleted because they are child groups of a group that is not on the list of groups to be deleted.
+	If a group is to be deleted, it should not be part of any other group that we are not deleting.
+.PARAMETER GroupsMembersJsonFilePath
+	The file path of the json file containing all group membership information previously saved. 
+.PARAMETER GroupsToDisableJsonFilePath
+	The file path of the json file containing to-be-deleted groups information previously saved.
+.EXAMPLE
+	Get-DistributionGroupsFailingNestingValidationForDeletion -GroupsToDeleteJsonFilePath $Global:OnpremGroupsGoodToDisableFileName
+#>
+function Get-DistributionGroupsFailingNestingValidationForDeletion
+{
+	[CmdletBinding()]
+	param
+	(
+		# The file path of the json file containing to-be-disable groups information previously saved
+		[Parameter(Mandatory = $true, Position = 1, ValueFromPipeline = $false)]
+		[ValidateScript({ Test-Path $_ })]
+		[string]
+		$GroupsToDeleteJsonFilePath
+	)
+	
+	begin
+	{
+		Write-Log "Begin executing $($MyInvocation.MyCommand). GroupsToDeleteJsonFilePath: $GroupsToDeleteJsonFilePath"
+	}
+
+	process
+	{
+		# If a group is to be deleted, it should not be part of any other group that we are not deleting
+		$groupsToDelete = Get-Content $GroupsToDeleteJsonFilePath -Raw | ConvertFrom-Json
+
+		$maxNestingCount = 10
+		$currentGroupsToDelete = $groupsToDelete
+		$nestedFailedGroups = @()
+		for ($i = 1; $i -le $maxNestingCount; ++$i)
+		{
+			Write-Log "Processing to exclude child groups of any groups we are not disabling. Nesting level ($i / $maxNestingCount)..."
+
+			$dropFile = ($Global:OnpremGroupsGoodToDeleteFileName + ".tmp.$i")
+			if (Test-Path $dropFile) { Remove-Item $dropFile -Force -Confirm:$false }
+
+			$index = 0
+			$count = $currentGroupsToDelete.Count
+			$nestedFailedGroups += $currentGroupsToDelete | % {
+				$groupToDelete = $_
+				++$index
+
+				Write-Log "($index/$count/$i) Checking the group for membership of any other group: '$($groupToDelete.DistinguishedName)'"
+
+				# All groups where the group to be deleted is a member
+				$allNestingGroups = $groupToDelete.MemberOf
+
+				# All nesting groups that are not in the migrations list
+				$nonMigratingNestingGroups = $allNestingGroups |  Where { $_.DistinguishedName -notin  $currentGroupsToDelete.DistinguishedName }
+
+				if ($nonMigratingNestingGroups)
+				{
+					Write-Warning "Failed Nesting Validation: '$($groupToDelete.DistinguishedName)'"
+					$groupToDelete
+				}
+			}
+
+			# Update the current list by removing groups that are already failed
+            $currentGroupsToDeleteOld = $currentGroupsToDelete
+			$currentGroupsToDelete = $currentGroupsToDelete | Where { $_.DistinguishedName -notin $nestedFailedGroups.DistinguishedName }
+            $currentGroupsToDelete | ConvertTo-Json | Out-File $dropFile
+            if ($currentGroupsToDelete.Count -eq $currentGroupsToDeleteOld.Count)
+            {
+                # all done - list not changing
+                break
+            }
+		}
+
+		$nestedFailedGroups | Sort DistinguishedName -Unique
+	}
+
+	end
+	{
+		Write-Log "End executing $($MyInvocation.MyCommand). GroupsToDeleteJsonFilePath: $GroupsToDeleteJsonFilePath"
 	}
 }
 

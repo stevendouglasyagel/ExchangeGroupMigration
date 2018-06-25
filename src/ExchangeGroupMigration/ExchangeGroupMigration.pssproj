@@ -28,6 +28,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="1-DumpOnPremGroupData.ps1" />
+    <Compile Include="10-ValidateOnpremGroupsForDeletion.ps1" />
+    <Compile Include="11-DeleteOnpremGroups.ps1" />
     <Compile Include="2-GenerateOnpremMailboxRemediationList.ps1" />
     <Compile Include="3-DumpOnlineGroupData.ps1" />
     <Compile Include="4-PrepareShadowGroupDataFiles.ps1" />
