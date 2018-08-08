@@ -21,10 +21,10 @@ $Global:NewSmtpDomain = if ($Global:TestTenant -eq $true) { "@contosolab.com" } 
 $Global:HybridEmailRoutingDomain = if ($Global:TestTenant -eq $true) { "@contosolab.mail.onmicrosoft.com" } else { "@contoso.mail.onmicrosoft.com" }
 $Global:DefaultGroupOwner = "DL_Admin" + $Global:NewSmtpDomain # must be an cloud MESG
 $Global:OnpremExchangeUri = switch ($Global:GroupForest) {
-		"CONTOSO" { if ($Global:TestTenant -eq $true) { "http://OC-EXCH-01.ukroi.contosolab.net/PowerShell" } else { "http://PPUKSDCWEHB002.ukroi.contoso.org/PowerShell" } }
-		"TH-CONTOSO" { if ($Global:TestTenant -eq $true) { "http://TH-EXCH-01.th.contosolab.net/PowerShell" } else { "http://THPHYBMAILHO01.TH-CONTOSO.ORG/PowerShell" } }
-		"CONTOSOMY" { if ($Global:TestTenant -eq $true) { "http://MY-EXCH-01.my.contosolab.net/PowerShell" } else { "http://MYPPEXCJ13HO01.my.contoso.com/PowerShell" } }
-		"CONTOSO-EU" { if ($Global:TestTenant -eq $true) { "http://CE-EXCH-01.ce.contosolab.net/PowerShell" } else { "http://Euprgvmcas01.contoso-europe.com/powershell" } }
+		"CONTOSO" { if ($Global:TestTenant -eq $true) { "http://OC-EXCH-01.ukroi.contosolab.net/PowerShell" } else { "http://OC-EXCH-01.ukroi.contoso.org/PowerShell" } }
+		"TH-CONTOSO" { if ($Global:TestTenant -eq $true) { "http://TH-EXCH-01.th.contosolab.net/PowerShell" } else { "http://TH-EXCH-01.TH-CONTOSO.ORG/PowerShell" } }
+		"CONTOSOMY" { if ($Global:TestTenant -eq $true) { "http://MY-EXCH-01.my.contosolab.net/PowerShell" } else { "http://MY-EXCH-01.my.contoso.com/PowerShell" } }
+		"CONTOSO-EU" { if ($Global:TestTenant -eq $true) { "http://CE-EXCH-01.ce.contosolab.net/PowerShell" } else { "http://CE-EXCH-01.contoso-europe.com/Powershell" } }
 	}
 
 # The OU which is excluded from syncing to AAD. This is because we don't have "DoNotSync" filter on contacts

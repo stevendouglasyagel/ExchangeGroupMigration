@@ -26,7 +26,7 @@ $PropertyNames =  @("CanonicalName", "CN", "Description", "DisplayName", "Distin
 $adGroups = $Global:DomainControllerLookup.Values | Where { $_ -like '*.ukroi.*' -or $_ -like '*.in.*' -or $_ -like '*.tsl.*' } | % {
     $dc = $_
     Write-Log "Reading groups on domain controller '$dc'..."
-    Get-ADGroup -Filter { legacyEXchangeDN -notlike '*' } -Server $dc -Properties $PropertyNames
+    Get-ADGroup -Filter { legacyExchangeDN -notlike '*' } -Server $dc -Properties $PropertyNames
 }
 
 $adGroups | Select $PropertyNames | ConvertTo-Json | Out-File $Global:OnpremAdGroupExportFileName
