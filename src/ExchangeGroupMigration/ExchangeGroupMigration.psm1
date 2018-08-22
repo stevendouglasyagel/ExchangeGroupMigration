@@ -403,30 +403,25 @@ function Get-OnpremRecipientDeliveryRestrictionsAndPublicDelegates
 	
 	process
 	{
-		$filterAttributes = @("AcceptMessagesOnlyFromDLMembers", "RejectMessagesFromDLMembers", "GrantSendOnBehalfTo")
+		Write-Log "Reading Mailboxes with AcceptMessagesOnlyFromDLMembers/RejectMessagesFromDLMembers/GrantSendOnBehalfTo configured..."
+		$output = Get-OnpremMailbox -ResultSize Unlimited -IgnoreDefaultScope -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+			| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers `
+		$output # send the output on the return pipeline 
 
-		foreach ($filterAttribute in $filterAttributes)
-		{
-			$filter = " $filterAttribute -ne '`$null' "
+		Write-Log "Reading DistributionGroups with AcceptMessagesOnlyFromDLMembers/RejectMessagesFromDLMembers/GrantSendOnBehalfTo configured..."
+		$output = Get-OnpremDistributionGroup -ResultSize Unlimited -IgnoreDefaultScope -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+			| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers `
+		$output # send the output on the return pipeline 
 
-			Write-Log "Reading Mailboxes with $filterAttribute configured..."
-			Get-OnpremMailbox -ResultSize Unlimited -IgnoreDefaultScope -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-	
-			Write-Log "Reading DistributionGroups with $filterAttribute configured..."
-			Get-OnpremDistributionGroup -ResultSize Unlimited -IgnoreDefaultScope -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
+		Write-Log "Reading MailUsers with AcceptMessagesOnlyFromDLMembers/RejectMessagesFromDLMembers/GrantSendOnBehalfTo configured..."
+		$output = Get-OnpremMailUser -ResultSize Unlimited -IgnoreDefaultScope -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+			| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers `
+		$output # send the output on the return pipeline 
 
-			# Any on-prem ones should have already been remediated
-			Write-Log "Reading MailUsers with $filterAttribute configured..."
-			Get-OnpremMailUser -ResultSize Unlimited -IgnoreDefaultScope -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-
-			# Any on-prem ones should have already been remediated
-			Write-Log "Reading MailContacts with $filterAttribute configured..."
-			Get-OnpremMailContact -ResultSize Unlimited -IgnoreDefaultScope -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-		}
+		Write-Log "Reading MailContacts with AcceptMessagesOnlyFromDLMembers/RejectMessagesFromDLMembers/GrantSendOnBehalfTo configured..."
+		$output = Get-OnpremMailContact -ResultSize Unlimited -IgnoreDefaultScope -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+			| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, DistinguishedName, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers `
+		$output # send the output on the return pipeline 
 	}
 
 	end
@@ -796,34 +791,43 @@ function Get-OnlineRecipientDeliveryRestrictionsAndPublicDelegates
 	
 	process
 	{
-		$filterAttributes = @("AcceptMessagesOnlyFromDLMembers", "RejectMessagesFromDLMembers", "GrantSendOnBehalfTo") | foreach { @{ "Name" = $_ } }
+		$filterAttributes = @("Mailbox", "DistributionGroup", "MailUser", "MailContact") | foreach { @{ "Name" = $_ } }
 
 		$scriptBlock = {
-			$filterAttribute = $Input.Name # InputObject from Start-RobustCloudCommand
+			$recipient = $Input.Name # InputObject from Start-RobustCloudCommand
 
-			$filter = " $filterAttribute -ne '`$null' "
+			switch ($recipient)
+			{
+				"Mailbox" {
+					Write-Log "Reading Mailboxes with AcceptMessagesOnlyFromDLMembers/RejectMessagesFromDLMembers/GrantSendOnBehalfTo configured..."
+					$output = Get-Mailbox -ResultSize Unlimited -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+						| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
+					$output # send the output on the return pipeline 
+				}
 
-			Write-Log "Reading Mailboxes with $filterAttribute configured..."
-			$output = Get-Mailbox -ResultSize Unlimited -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-			$output # send the output on the return pipeline 
-	
-			Write-Log "Reading DistributionGroups with $filterAttribute configured..."
-			$output = Get-DistributionGroup -ResultSize Unlimited -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-			$output # send the output on the return pipeline 
+				"DistributionGroup" {
+					Write-Log "Reading DistributionGroups with $filterAttribute configured..."
+					$output = Get-DistributionGroup -ResultSize Unlimited -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+						| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
+					$output # send the output on the return pipeline 
+				}
 
-			# Any on-prem ones should have already been remediated
-			Write-Log "Reading MailUsers with $filterAttribute configured..."
-			$output = Get-MailUser -ResultSize Unlimited -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-			$output # send the output on the return pipeline 
+				"MailUser" {
+					# Any on-prem ones should have already been remediated
+					Write-Log "Reading MailUsers with $filterAttribute configured..."
+					$output = Get-MailUser -ResultSize Unlimited -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+						| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
+					$output # send the output on the return pipeline 
+				}
 
-			# Any on-prem ones should have already been remediated
-			Write-Log "Reading MailContacts with $filterAttribute configured..."
-			$output = Get-MailContact -ResultSize Unlimited -Filter $filter `
-				| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
-			$output # send the output on the return pipeline 
+				"MailContact" {
+					# Any on-prem ones should have already been remediated
+					Write-Log "Reading MailContacts with $filterAttribute configured..."
+					$output = Get-MailContact -ResultSize Unlimited -Filter { AcceptMessagesOnlyFromDLMembers -ne $null -or RejectMessagesFromDLMembers -ne $null -or GrantSendOnBehalfTo -ne $null } `
+						| Select Identity, Name, Guid, RecipientType, RecipientTypeDetails, PrimarySmtpAddress, EmailAddresses, GrantSendOnBehalfTo, AcceptMessagesOnlyFrom, AcceptMessagesOnlyFromDLMembers, RejectMessagesFrom, RejectMessagesFromDLMembers
+					$output # send the output on the return pipeline 
+				}
+			}
 		}
 
 		Start-RobustCloudCommand -Agree -UserName $Global:__UPN__ -Recipients $filterAttributes -IdentifyingProperty "Name" -ScriptBlock $scriptBlock 
