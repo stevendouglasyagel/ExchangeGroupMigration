@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "build-object-paths": "^1.0.2",
+    "exchange-node-sdk": "^1.0.1",
+    "nobel-prize-data": "^0.2.0"
+  }
+}
